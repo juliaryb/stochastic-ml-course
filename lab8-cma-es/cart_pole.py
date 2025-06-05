@@ -66,7 +66,7 @@ def play_episode(env: gym.Env, weights: np.ndarray, render: bool = False) -> flo
     terminated, truncated = False, False
 
     while not (terminated or truncated):
-        features = np.append(obs, 1.0)
+        features = np.append(obs, 1.0)  # feature vector for the current state + bias
         activation = float(np.dot(weights, features))
         action = 1 if activation > 0.0 else 0
         obs, reward, terminated, truncated, _ = env.step(action)
@@ -127,12 +127,37 @@ def optimize_policy(
     """
     # TODO: Implement CMA-ES optimization
     # Use the cma.CMAEvolutionStrategy class to run the CMA-ES optimization
-    # Note: CMA-ES runs minimization, so we need tonegate the fitness function
+    # Note: CMA-ES runs minimization, so we need to negate the fitness function
     initial_solution = np.zeros(dim)
     initial_negative_fitness = -evaluate_weights(
         initial_solution, env_name, num_episodes=episodes_per_eval
     )
-    return np.full(max_gens, -1 * initial_negative_fitness), initial_solution
+
+    best_rewards: list[float] = []
+    best_weights = initial_solution.copy()
+    best_reward = -np.inf
+
+    es = cma.CMAEvolutionStrategy(initial_solution, sigma, {"popsize": popsize})
+
+    for generation in range(max_gens):
+        candidate_solutions = es.ask()
+
+        negative_fitensses = []
+
+        for candidate in candidate_solutions:
+            average_reward = evaluate_weights(candidate, env_name, num_episodes=episodes_per_eval)
+            negative_fitensses.append(-average_reward)
+
+            if average_reward > best_reward:
+                best_reward = average_reward
+                best_weights = candidate.copy()
+
+        # CMA-ES distribution update
+        es.tell(candidate_solutions, negative_fitensses)
+        best_rewards.append(-min(negative_fitensses))
+
+
+    return best_rewards, best_weights
 
 
 def plot_results(rewards: list[float]) -> None:
